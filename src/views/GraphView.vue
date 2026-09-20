@@ -1,7 +1,6 @@
 <script setup>
 import { ref, onMounted, onUnmounted, nextTick } from 'vue'
 import * as d3 from 'd3'
-import { getOverview } from '@/api/graph'
 import { useAuthStore } from '@/stores/auth'
 import { useRouter } from 'vue-router'
 import { getOverview, getSubgraph, getNodeDetail, searchNodes } from '@/api/graph'
