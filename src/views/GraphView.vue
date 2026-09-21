@@ -21,6 +21,32 @@ async function selectNode(d) {
   }
 }
 
+async function expandNode(d) {
+  loading.value = true
+  try {
+    const data = await getSubgraph(d.name, 2)
+    render(data)
+  } finally {
+    loading.value = false
+  }
+}
+
+const keyword = ref('')
+
+async function handleSearch() {
+  if (!keyword.value.trim()) return
+  try {
+    const results = await searchNodes(keyword.value.trim())
+    if (results.length === 0) {
+      alert('没找到相关知识点')
+      return
+    }
+    await expandNode({ name: results[0].name })
+  } catch (e) {
+    alert('搜索失败：' + (e.message || '未知错误'))
+  }
+}
+
 let simulation = null
 
 // 不同标签用不同颜色
@@ -96,6 +122,8 @@ function render(data) {
       .force('charge', d3.forceManyBody().strength(-400))   // 负值 = 互相排斥
       .force('center', d3.forceCenter(width / 2, height / 2))
       .force('collide', d3.forceCollide().radius(d => nodeRadius(d) + 4))
+      .force('x', d3.forceX(width / 2).strength(0.05))
+      .force('y', d3.forceY(height / 2).strength(0.05))
 
   // ---------- 画连线 ----------
   const link = container.append('g')
@@ -119,6 +147,9 @@ function render(data) {
       .call(dragBehavior())
       .on('click', (event, d) => {
         selectNode(d)
+      })
+            .on('dblclick', (event, d) => {
+        expandNode(d)
       })
 
   // ---------- 画标签 ----------
@@ -182,6 +213,12 @@ function handleLogout() {
   <div class="graph-page">
     <header>
       <h2>知识图谱</h2>
+      <input
+          class="header-input"
+          v-model="keyword"
+          placeholder="搜索知识点"
+          @keyup.enter="handleSearch"
+      />
       <span class="user">欢迎，{{ authStore.username }}</span>
       <button @click="handleLogout">退出</button>
     </header>
@@ -189,8 +226,9 @@ function handleLogout() {
     <p v-if="loading" class="tip">加载中...</p>
     <p v-if="errorMsg" class="tip error">{{ errorMsg }}</p>
 
-    <svg ref="svgRef" class="canvas">
-          <aside v-if="selectedNode" class="drawer">
+    <svg ref="svgRef" class="canvas"></svg>
+
+    <aside v-if="selectedNode" class="drawer">
       <h3>{{ selectedNode.name }}</h3>
       <span class="badge">{{ selectedNode.label }}</span>
       <p class="desc">{{ selectedNode.description || '暂无描述' }}</p>
@@ -213,12 +251,22 @@ function handleLogout() {
 
       <button @click="selectedNode = null">关闭</button>
     </aside>
-    </svg>
+       <div class="legend">
+      <span v-for="(color, label) in LABEL_COLORS" :key="label">
+        <i :style="{ background: color }"></i>{{ label }}
+      </span>
+    </div>
   </div>
 </template>
 
 <style scoped>
-.graph-page { width: 100%; height: 100%; display: flex; flex-direction: column; }
+.graph-page { 
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  position: relative; 
+}
 header {
   height: 56px;
   flex-shrink: 0;
@@ -238,6 +286,22 @@ header button {
   border: 1px solid rgba(255,255,255,.5);
   border-radius: 4px;
   cursor: pointer;
+}
+.header-input {
+  width: 200px;
+  padding: 6px 12px;
+  border: 1px solid rgba(255, 255, 255, .35);
+  border-radius: 4px;
+  background: rgba(255, 255, 255, .12);
+  color: #fff;
+  font-size: 13px;
+  outline: none;
+}
+.header-input::placeholder {
+  color: rgba(255, 255, 255, .5);
+}
+.header-input:focus {
+  border-color: rgba(255, 255, 255, .75);
 }
 .canvas { flex: 1; width: 100%; background: #fafafa; }
 .tip { padding: 12px 20px; font-size: 13px; color: #666; }
