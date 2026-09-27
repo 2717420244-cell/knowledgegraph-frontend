@@ -1,13 +1,14 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import LoginView from '@/views/LoginView.vue'
 import GraphView from '@/views/GraphView.vue'
-
 import ChatView from '@/views/ChatView.vue'
+import NotesView from '@/views/NotesView.vue'
 
 const routes = [
   { path: '/login', component: LoginView },
   { path: '/graph', component: GraphView, meta: { requiresAuth: true } },
-  { path: '/chat', component: ChatView, meta: { requiresAuth: true } },
+  { path: '/notes', component: NotesView, meta: { requiresAuth: true } },
+  { path: '/chat',  component: ChatView,  meta: { requiresAuth: true } },
   { path: '/', redirect: '/graph' }
 ]
 
