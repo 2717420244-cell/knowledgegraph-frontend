@@ -4,6 +4,7 @@ import * as d3 from 'd3'
 import { useAuthStore } from '@/stores/auth'
 import { useRouter } from 'vue-router'
 import { getOverview, getSubgraph, getNodeDetail, searchNodes } from '@/api/graph'
+import { createNote, parseNote } from '@/api/notes'
 
 const router = useRouter()
 const authStore = useAuthStore()
@@ -44,6 +45,35 @@ async function handleSearch() {
     await expandNode({ name: results[0].name })
   } catch (e) {
     alert('搜索失败：' + (e.message || '未知错误'))
+  }
+}
+
+const showCreateDialog = ref(false)
+const creating = ref(false)
+const newNote = ref({ title: '', content: '' })
+
+/**
+ * 新建笔记并立刻解析，解析完刷新图谱。
+ */
+async function createAndParse() {
+  if (!newNote.value.title.trim() || !newNote.value.content.trim()) {
+    alert('标题和正文都要填')
+    return
+  }
+  creating.value = true
+  try {
+    const note = await createNote({
+      title: newNote.value.title,
+      content: newNote.value.content
+    })
+    await parseNote(note.id)
+    showCreateDialog.value = false
+    newNote.value = { title: '', content: '' }
+    await loadOverview()      // 重新拉图谱，新节点立刻出现
+  } catch (e) {
+    alert('失败：' + (e.message || '未知错误'))
+  } finally {
+    creating.value = false
   }
 }
 
@@ -220,6 +250,9 @@ function handleLogout() {
           @keyup.enter="handleSearch"
       />
       <span class="user">欢迎，{{ authStore.username }}</span>
+      <button @click="router.push('/chat')">问答</button>
+      <button class="primary-btn" @click="showCreateDialog = true">+ 新建并解析</button>
+      <button @click="router.push('/notes')">笔记</button>
       <button @click="handleLogout">退出</button>
     </header>
 
@@ -255,6 +288,26 @@ function handleLogout() {
       <span v-for="(color, label) in LABEL_COLORS" :key="label">
         <i :style="{ background: color }"></i>{{ label }}
       </span>
+      <div v-if="showCreateDialog" class="mask" @click.self="showCreateDialog = false">
+      <div class="dialog">
+        <h3>新建笔记并解析</h3>
+        <p class="hint">粘贴一段技术笔记，系统会自动抽取实体关系加入图谱</p>
+
+        <input v-model="newNote.title" placeholder="标题，例如：Transformer 笔记" />
+        <textarea
+            v-model="newNote.content"
+            rows="12"
+            placeholder="粘贴正文，例如：Transformer 的核心是自注意力机制..."
+        ></textarea>
+
+        <div class="dialog-actions">
+          <button @click="showCreateDialog = false">取消</button>
+          <button class="primary" :disabled="creating" @click="createAndParse">
+            {{ creating ? '解析中（约 10-30 秒）...' : '创建并解析' }}
+          </button>
+        </div>
+      </div>
+    </div>
     </div>
   </div>
 </template>
@@ -329,4 +382,36 @@ header button {
 .drawer h4 { font-size: 13px; color: #888; margin: 16px 0 8px; }
 .drawer ul { list-style: none; font-size: 13px; }
 .drawer li { padding: 5px 0; border-bottom: 1px solid #f2f2f2; }
+.primary-btn {
+  padding: 6px 14px;
+  background: #4e79a7;
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 13px;
+}
+.mask {
+  position: absolute; inset: 0;
+  background: rgba(0, 0, 0, .4);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 100;
+}
+.dialog {
+  width: 520px; background: #fff; border-radius: 10px; padding: 24px;
+  display: flex; flex-direction: column; gap: 12px;
+}
+.dialog h3 { margin: 0; }
+.hint { font-size: 12px; color: #999; margin: 0; }
+.dialog input, .dialog textarea {
+  width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px;
+  box-sizing: border-box; font-size: 14px; font-family: inherit; resize: vertical;
+}
+.dialog-actions { display: flex; justify-content: flex-end; gap: 10px; }
+.dialog-actions button {
+  padding: 8px 18px; border: 1px solid #ddd; background: #fff;
+  border-radius: 4px; cursor: pointer;
+}
+.dialog-actions button.primary { background: #4e79a7; color: #fff; border-color: #4e79a7; }
+.dialog-actions button:disabled { opacity: .6; cursor: not-allowed; }
 </style>

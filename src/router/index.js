@@ -2,9 +2,12 @@ import { createRouter, createWebHistory } from 'vue-router'
 import LoginView from '@/views/LoginView.vue'
 import GraphView from '@/views/GraphView.vue'
 
+import ChatView from '@/views/ChatView.vue'
+
 const routes = [
   { path: '/login', component: LoginView },
   { path: '/graph', component: GraphView, meta: { requiresAuth: true } },
+  { path: '/chat', component: ChatView, meta: { requiresAuth: true } },
   { path: '/', redirect: '/graph' }
 ]
 
