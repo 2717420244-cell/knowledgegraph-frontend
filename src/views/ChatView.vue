@@ -66,6 +66,7 @@ function handleLogout() {
       <span class="user">欢迎，{{ authStore.username }}</span>
       <button @click="router.push('/graph')">图谱</button>
       <button @click="router.push('/notes')">笔记</button>
+      <button @click="router.push('/dashboard')">统计</button>
       <button @click="handleLogout">退出</button>
     </header>
 

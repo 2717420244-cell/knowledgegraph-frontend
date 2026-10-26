@@ -251,6 +251,7 @@ function handleLogout() {
       />
       <span class="user">欢迎，{{ authStore.username }}</span>
       <button @click="router.push('/chat')">问答</button>
+      <button @click="router.push('/dashboard')">统计</button>
       <button class="primary-btn" @click="showCreateDialog = true">+ 新建并解析</button>
       <button @click="router.push('/notes')">笔记</button>
       <button @click="handleLogout">退出</button>
