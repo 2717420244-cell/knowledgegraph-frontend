@@ -3,6 +3,7 @@ import { ref, onMounted } from 'vue'
 import {
   listNotes, getNote, createNote, updateNote, deleteNote, searchNotes, parseNote
 } from '@/api/notes'
+import { importSampleNotes, SAMPLE_NOTES } from '@/api/samples'
 import { useAuthStore } from '@/stores/auth'
 import { useRouter } from 'vue-router'
 
@@ -12,6 +13,10 @@ const authStore = useAuthStore()
 const notes = ref([])
 const loading = ref(false)
 const errorMsg = ref('')
+
+// 示例笔记导入状态（空状态引导）
+const importing = ref(false)
+const importProgress = ref(null)   // { index, total, title, phase }
 
 // 编辑弹窗
 const showDialog = ref(false)
@@ -116,6 +121,30 @@ function statusText(status) {
   return { draft: '未解析', parsed: '已解析', archived: '已归档' }[status] || status
 }
 
+/**
+ * 一键导入示例笔记（空状态引导）。
+ * 每篇要等 LLM 解析 10~30 秒，全程显示进度，导入完刷新列表。
+ */
+async function handleImportSamples() {
+  if (!confirm(`将载入 ${SAMPLE_NOTES.length} 篇 AI 示例笔记并自动调用大模型解析，共需 1~3 分钟。现在开始吗？`)) return
+  importing.value = true
+  importProgress.value = null
+  try {
+    const { created, parsed, failed } = await importSampleNotes({
+      onProgress: p => { importProgress.value = p }
+    })
+    await loadNotes()
+    let msg = `导入完成：成功 ${created} 篇，已解析 ${parsed} 篇`
+    if (failed > 0) msg += `，失败 ${failed} 篇（可稍后在列表中手动点「解析」重试）`
+    alert(msg)
+  } catch (e) {
+    alert('导入失败：' + (e.message || '未知错误'))
+  } finally {
+    importing.value = false
+    importProgress.value = null
+  }
+}
+
 function handleLogout() {
   authStore.logout()
   router.push('/login')
@@ -166,9 +195,31 @@ function handleLogout() {
         </div>
       </div>
 
-      <p v-if="!loading && notes.length === 0" class="empty">
-        还没有笔记，点右上角「新建笔记」开始。
-      </p>
+      <div v-if="!loading && notes.length === 0 && !importing" class="empty">
+        <p class="empty-title">还没有笔记</p>
+        <p class="empty-desc">从零体验要写笔记、等解析，不如先载入示例笔记 ——
+          5 篇 AI 主题笔记自动解析成图谱，直接看完整效果。</p>
+        <button class="primary big" @click="handleImportSamples">
+          载入示例笔记（{{ SAMPLE_NOTES.length }} 篇，约 1~3 分钟）
+        </button>
+        <p class="empty-tip">或点右上角「新建笔记」，自己写一篇</p>
+      </div>
+
+      <!-- 导入进度 -->
+      <div v-if="importing" class="empty importing">
+        <p class="empty-title">正在导入示例笔记...</p>
+        <p v-if="importProgress" class="empty-desc">
+          第 {{ importProgress.index + 1 }} / {{ importProgress.total }} 篇：《{{ importProgress.title }}》
+          {{ importProgress.phase === 'creating' ? '（创建中）' : '（大模型解析中，约 10~30 秒）' }}
+        </p>
+        <div class="progress-bar">
+          <div
+              class="progress-inner"
+              :style="{ width: importProgress ? ((importProgress.index + 1) / importProgress.total * 100) + '%' : '0%' }"
+          ></div>
+        </div>
+        <p class="empty-tip">导入期间请勿关闭或刷新页面</p>
+      </div>
     </div>
 
     <!-- 新建 / 编辑弹窗 -->
@@ -232,7 +283,28 @@ header button.primary { background: #4e79a7; border-color: #4e79a7; }
 }
 .actions button.primary { background: #4e79a7; color: #fff; border-color: #4e79a7; }
 .actions button.danger { color: #e74c3c; border-color: #f5c6c6; }
-.empty { text-align: center; color: #999; padding: 60px 0; }
+.empty {
+  text-align: center; color: #999; padding: 60px 0;
+  display: flex; flex-direction: column; align-items: center; gap: 10px;
+}
+.empty-title { font-size: 18px; color: #555; margin: 0; font-weight: 600; }
+.empty-desc { font-size: 13px; color: #888; margin: 0; max-width: 420px; line-height: 1.6; }
+.empty-tip { font-size: 12px; color: #bbb; margin: 6px 0 0; }
+.empty button.big {
+  padding: 10px 26px; font-size: 14px;
+  background: #4e79a7; color: #fff; border: none;
+  border-radius: 6px; cursor: pointer;
+}
+.empty button.big:hover { background: #3d6489; }
+.empty.importing { padding: 80px 0; }
+.progress-bar {
+  width: 320px; height: 8px; border-radius: 4px;
+  background: #eee; overflow: hidden; margin-top: 6px;
+}
+.progress-inner {
+  height: 100%; background: #4e79a7;
+  border-radius: 4px; transition: width .3s;
+}
 .tip { padding: 12px 20px; font-size: 13px; color: #666; }
 .error { color: #e74c3c; }
 
