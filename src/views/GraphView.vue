@@ -91,6 +91,71 @@ function colorOf(label) {
   return LABEL_COLORS[label] || '#999'
 }
 
+// 被隐藏的标签集合（点击图例切换）
+const hiddenLabels = ref(new Set())
+
+/** 图例点击：隐藏/显示某类实体 */
+function toggleLabel(label) {
+  if (hiddenLabels.value.has(label)) {
+    hiddenLabels.value.delete(label)
+  } else {
+    hiddenLabels.value.add(label)
+  }
+  // 触发响应式更新（Set 原地修改不会触发，需整体替换）
+  hiddenLabels.value = new Set(hiddenLabels.value)
+  applyLabelFilter()
+}
+
+/** 判断节点当前是否可见（未隐藏标签） */
+function isNodeVisible(d) {
+  return !hiddenLabels.value.has(d.label)
+}
+
+/** 根据隐藏标签更新节点/连线透明度与可交互性 */
+function applyLabelFilter() {
+  const svg = d3.select(svgRef.value)
+  const nodeSel = svg.selectAll('circle')
+  const linkSel = svg.selectAll('g > line')
+  const labelSel = svg.selectAll('text')
+
+  nodeSel
+      .style('opacity', d => isNodeVisible(d) ? 1 : 0.08)
+      .style('pointer-events', d => isNodeVisible(d) ? 'auto' : 'none')
+  labelSel.style('opacity', d => isNodeVisible(d) ? 1 : 0.05)
+  linkSel.style('opacity', d => {
+    const visible = isNodeVisible(d.source) && isNodeVisible(d.target)
+    return visible ? 0.6 : 0.03
+  })
+}
+
+/** 悬停高亮：该节点及其邻居保持高亮，其余降透明度 */
+function highlightNeighbors(d, hovered) {
+  const svg = d3.select(svgRef.value)
+
+  // 邻居集合（d3 把 link 的 source/target 替换成了节点对象，直接可用）
+  const neighborIds = new Set([d.id])
+  svg.selectAll('g > line').each(function (l) {
+    if (l.source.id === d.id) neighborIds.add(l.target.id)
+    if (l.target.id === d.id) neighborIds.add(l.source.id)
+  })
+
+  svg.selectAll('circle')
+      .style('opacity', n => neighborIds.has(n.id) && isNodeVisible(n) ? 1 : 0.12)
+  svg.selectAll('text')
+      .style('opacity', n => neighborIds.has(n.id) && isNodeVisible(n) ? 1 : 0.05)
+  svg.selectAll('g > line')
+      .style('opacity', l => {
+        const touched = l.source.id === d.id || l.target.id === d.id
+        const visible = isNodeVisible(l.source) && isNodeVisible(l.target)
+        return touched && visible ? 1 : 0.04
+      })
+}
+
+/** 取消悬停：恢复到"仅按标签过滤"的状态 */
+function clearHighlight() {
+  applyLabelFilter()
+}
+
 onMounted(async () => {
   await loadOverview()
 })
@@ -175,10 +240,16 @@ function render(data) {
       .attr('stroke-width', 2)
       .style('cursor', 'pointer')
       .call(dragBehavior())
+      .on('mouseenter', (event, d) => {
+        highlightNeighbors(d, true)
+      })
+      .on('mouseleave', () => {
+        clearHighlight()
+      })
       .on('click', (event, d) => {
         selectNode(d)
       })
-            .on('dblclick', (event, d) => {
+      .on('dblclick', (event, d) => {
         expandNode(d)
       })
 
@@ -256,7 +327,6 @@ function handleLogout() {
       <button @click="router.push('/notes')">笔记</button>
       <button @click="handleLogout">退出</button>
     </header>
-
     <p v-if="loading" class="tip">加载中...</p>
     <p v-if="errorMsg" class="tip error">{{ errorMsg }}</p>
 
@@ -285,11 +355,21 @@ function handleLogout() {
 
       <button @click="selectedNode = null">关闭</button>
     </aside>
-       <div class="legend">
-      <span v-for="(color, label) in LABEL_COLORS" :key="label">
+
+    <div class="legend">
+      <span
+          v-for="(color, label) in LABEL_COLORS"
+          :key="label"
+          class="legend-item"
+          :class="{ off: hiddenLabels.has(label) }"
+          @click="toggleLabel(label)"
+      >
         <i :style="{ background: color }"></i>{{ label }}
       </span>
-      <div v-if="showCreateDialog" class="mask" @click.self="showCreateDialog = false">
+    </div>
+
+    <!-- 新建笔记并解析弹窗（已从 legend 中移出，修复嵌套结构错误） -->
+    <div v-if="showCreateDialog" class="mask" @click.self="showCreateDialog = false">
       <div class="dialog">
         <h3>新建笔记并解析</h3>
         <p class="hint">粘贴一段技术笔记，系统会自动抽取实体关系加入图谱</p>
@@ -308,7 +388,6 @@ function handleLogout() {
           </button>
         </div>
       </div>
-    </div>
     </div>
   </div>
 </template>
@@ -358,6 +437,28 @@ header button {
   border-color: rgba(255, 255, 255, .75);
 }
 .canvas { flex: 1; width: 100%; background: #fafafa; }
+.legend {
+  position: absolute;
+  left: 16px; bottom: 16px;
+  display: flex; gap: 12px;
+  background: rgba(255,255,255,.92);
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  padding: 8px 14px;
+  font-size: 12px;
+  color: #555;
+  z-index: 10;
+}
+.legend-item {
+  display: inline-flex; align-items: center; gap: 5px;
+  cursor: pointer;
+  user-select: none;
+  padding: 2px 4px;
+  border-radius: 4px;
+}
+.legend-item:hover { background: #f0f4f8; }
+.legend-item.off { opacity: .4; text-decoration: line-through; }
+.legend i { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
 .tip { padding: 12px 20px; font-size: 13px; color: #666; }
 .error { color: #e74c3c; }
 .drawer {
