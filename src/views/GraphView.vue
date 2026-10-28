@@ -14,19 +14,45 @@ const loading = ref(false)
 const errorMsg = ref('')
 const selectedNode = ref(null)
 
+// 轻提示：4 秒后自动消失，避免一次失败把错误条永久钉在页面上
+let tipTimer = null
+function flashError(msg) {
+  errorMsg.value = msg
+  clearTimeout(tipTimer)
+  tipTimer = setTimeout(() => { errorMsg.value = '' }, 4000)
+}
+
 async function selectNode(d) {
+  // Document 等非实体节点没有 name，按 name 查详情只会拿到 404
+  if (!d || !d.name) {
+    flashError('该节点不是实体，没有详情可查')
+    return
+  }
   try {
     selectedNode.value = await getNodeDetail(d.name)
   } catch (e) {
     selectedNode.value = null
+    flashError('节点详情加载失败：' + (e.message || '未知错误'))
   }
 }
 
 async function expandNode(d) {
+  if (!d || !d.name) {
+    flashError('该节点不是实体，无法展开')
+    return
+  }
   loading.value = true
   try {
     const data = await getSubgraph(d.name, 2)
+    // 子图为空时不要 render：render 会先清空画布，
+    // 结果就是"双击一下，整张图没了"
+    if (!data || !data.nodes || data.nodes.length === 0) {
+      flashError(`「${d.name}」暂无关联实体`)
+      return
+    }
     render(data)
+  } catch (e) {
+    flashError('加载子图失败：' + (e.message || '未知错误'))
   } finally {
     loading.value = false
   }
@@ -79,10 +105,9 @@ async function createAndParse() {
 
 let simulation = null
 
-// 不同标签用不同颜色
+// 不同标签用不同颜色（只列实体：Document 是笔记本身，不进图谱）
 const LABEL_COLORS = {
   Concept: '#4e79a7',
-  Document: '#f28e2b',
   Person: '#e15759',
   Event: '#76b7b2'
 }
@@ -163,6 +188,8 @@ onMounted(async () => {
 onUnmounted(() => {
   // 组件销毁时必须停掉仿真，否则它会在后台一直算，内存泄漏
   simulation?.stop()
+  // 顺手清掉错误提示的定时器，避免刷新到别的页面后还去改已卸载组件的状态
+  clearTimeout(tipTimer)
 })
 
 async function loadOverview() {

@@ -35,8 +35,11 @@ async function send() {
     aiMsg.paths = res.paths || []
     aiMsg.sources = res.sources || []
     aiMsg.hitEntities = res.hitEntities || []
+    // 后端明确说「图谱里没有依据」时，隐藏溯源区，避免答案看着有出处
+    aiMsg.hasEvidence = res.hasEvidence !== false
   } catch (e) {
     aiMsg.content = '问答失败：' + (e.message || '未知错误')
+    aiMsg.hasEvidence = false
   } finally {
     aiMsg.loading = false
     sending.value = false
@@ -83,7 +86,7 @@ function handleLogout() {
         </div>
 
         <!-- 只有 AI 消息且拿到数据才展示依据 -->
-        <div v-if="m.role === 'ai' && !m.loading && m.paths" class="evidence">
+        <div v-if="m.role === 'ai' && !m.loading && m.hasEvidence" class="evidence">
           <div class="ev-row">
             <span class="ev-label">命中实体</span>
             <span v-if="m.hitEntities.length === 0" class="muted">无</span>
