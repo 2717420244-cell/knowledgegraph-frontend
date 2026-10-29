@@ -101,6 +101,18 @@ function handleLogout() {
             </span>
           </div>
 
+          <!-- 命中的原文片段：没有向量检索，就把命中实体定位到具体句子 -->
+          <div v-if="m.sources.some(s => s.snippet)" class="ev-snippets">
+            <div v-for="s in m.sources.filter(s => s.snippet)" :key="'snip-' + s.noteId" class="snippet">
+              <div class="snippet-head">
+                <span class="snippet-title">《{{ s.noteTitle }}》</span>
+                <span v-if="s.score > 0" class="snippet-score">匹配度 {{ s.score.toFixed(2) }}</span>
+                <span v-for="e in s.matchedEntities" :key="e" class="chip mini">{{ e }}</span>
+              </div>
+              <blockquote class="snippet-text">{{ s.snippet }}</blockquote>
+            </div>
+          </div>
+
           <div class="ev-toggle" @click="m.showPaths = !m.showPaths">
             {{ m.showPaths ? '收起' : '展开' }}图谱依据（{{ m.paths.length }} 条关系）
           </div>
@@ -184,6 +196,20 @@ header button {
   padding: 2px 8px; background: #eef2f5; border-radius: 10px; color: #555;
 }
 .chip.source { background: #fff3d6; color: #96680f; }
+.chip.mini { padding: 0 6px; font-size: 11px; }
+
+.ev-snippets { margin: 6px 0 8px; display: flex; flex-direction: column; gap: 8px; }
+.snippet {
+  padding: 8px 10px; background: #fffdf7;
+  border-left: 3px solid #f0c36d; border-radius: 4px;
+}
+.snippet-head { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 4px; }
+.snippet-title { color: #96680f; font-weight: 600; }
+.snippet-score { color: #4e79a7; font-size: 11px; }
+.snippet-text {
+  margin: 0; color: #555; line-height: 1.7;
+  white-space: pre-wrap; word-break: break-word;
+}
 
 .ev-toggle { color: #4e79a7; cursor: pointer; margin-top: 4px; }
 .paths { list-style: none; margin: 8px 0 0; padding: 0; max-height: 220px; overflow-y: auto; }
