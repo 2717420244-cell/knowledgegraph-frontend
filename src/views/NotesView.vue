@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import {
   listNotes, getNote, createNote, updateNote, deleteNote, searchNotes, parseNote
 } from '@/api/notes'
@@ -26,16 +26,48 @@ const form = ref({ title: '', content: '', sourceUrl: '' })
 // 搜索
 const keyword = ref('')
 
-// 正在解析的笔记 id
+// 正在解析的笔记 id（本次会话内点击触发的，用于按钮即时禁用）
 const parsingId = ref(null)
 
+// 轮询：解析是同步长请求，但刷新页面/换浏览器后本地状态就丢了，
+// 所以以服务端 status === 'parsing' 为准，定时刷新直到没有解析中的笔记
+let pollTimer = null
+
 onMounted(() => loadNotes())
+onUnmounted(() => stopPolling())
+
+/**
+ * 有笔记在解析中就每 4 秒刷新一次列表，全部解析完自动停。
+ */
+function ensurePolling() {
+  const hasParsing = notes.value.some(n => n.status === 'parsing')
+  if (hasParsing && !pollTimer) {
+    pollTimer = setInterval(() => {
+      if (!loading.value) loadNotes()
+    }, 4000)
+  } else if (!hasParsing) {
+    stopPolling()
+  }
+}
+
+function stopPolling() {
+  if (pollTimer) {
+    clearInterval(pollTimer)
+    pollTimer = null
+  }
+}
+
+/** 解析中 = 本地刚点过，或服务端状态是 parsing（刷新后仍能正确禁用按钮） */
+function isParsing(note) {
+  return parsingId.value === note.id || note.status === 'parsing'
+}
 
 async function loadNotes() {
   loading.value = true
   errorMsg.value = ''
   try {
     notes.value = await listNotes(1, 50)
+    ensurePolling()
   } catch (e) {
     errorMsg.value = e.message || '加载笔记失败'
   } finally {
@@ -118,7 +150,7 @@ async function handleSearch() {
 }
 
 function statusText(status) {
-  return { draft: '未解析', parsed: '已解析', archived: '已归档' }[status] || status
+  return { draft: '未解析', parsing: '解析中', parsed: '已解析', archived: '已归档' }[status] || status
 }
 
 /**
@@ -185,13 +217,13 @@ function handleLogout() {
         <div class="actions">
           <button
               class="primary"
-              :disabled="parsingId === note.id"
+              :disabled="isParsing(note)"
               @click="parse(note)"
           >
-            {{ parsingId === note.id ? '解析中...' : '解析' }}
+            {{ isParsing(note) ? '解析中...' : '解析' }}
           </button>
           <button @click="openEdit(note)">编辑</button>
-          <button class="danger" @click="remove(note)">删除</button>
+          <button class="danger" :disabled="isParsing(note)" @click="remove(note)">删除</button>
         </div>
       </div>
 
@@ -276,6 +308,8 @@ header button.primary { background: #4e79a7; border-color: #4e79a7; }
 }
 .badge.parsed { background: #e3f2e1; color: #3c7a2e; }
 .badge.draft { background: #fff3d6; color: #96680f; }
+.badge.parsing { background: #e6f0fb; color: #2f6fa8; }
+.actions button:disabled { opacity: .55; cursor: not-allowed; }
 .actions { display: flex; gap: 8px; flex-shrink: 0; }
 .actions button {
   padding: 6px 12px; border: 1px solid #ddd; background: #fff;
