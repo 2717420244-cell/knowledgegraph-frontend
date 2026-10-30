@@ -12,6 +12,7 @@ const authStore = useAuthStore()
 const svgRef = ref(null)
 const loading = ref(false)
 const errorMsg = ref('')
+const graphNotice = ref('')
 const selectedNode = ref(null)
 
 // 轻提示：4 秒后自动消失，避免一次失败把错误条永久钉在页面上
@@ -196,7 +197,7 @@ async function loadOverview() {
   loading.value = true
   errorMsg.value = ''
   try {
-    const data = await getOverview(200)
+    const data = await getOverview(300)
     render(data)
   } catch (e) {
     errorMsg.value = e.message || '加载图谱失败'
@@ -212,6 +213,11 @@ async function loadOverview() {
 function render(data) {
   const el = svgRef.value
   if (!el) return
+
+  // 节点过多时后端只返回关联度最高的一批，这里明说一句，避免用户以为图谱漏了东西
+  graphNotice.value = data.truncated
+    ? `图谱共 ${data.totalNodes} 个实体，当前只展示关联度最高的 ${data.nodes.length} 个（双击节点可下钻查看局部）`
+    : ''
 
   const width = el.clientWidth
   const height = el.clientHeight
@@ -356,6 +362,7 @@ function handleLogout() {
     </header>
     <p v-if="loading" class="tip">加载中...</p>
     <p v-if="errorMsg" class="tip error">{{ errorMsg }}</p>
+    <p v-if="graphNotice" class="tip info">{{ graphNotice }}</p>
 
     <svg ref="svgRef" class="canvas"></svg>
 
@@ -488,6 +495,7 @@ header button {
 .legend i { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
 .tip { padding: 12px 20px; font-size: 13px; color: #666; }
 .error { color: #e74c3c; }
+.info { color: #8a6d3b; background: #fcf8e3; }
 .drawer {
   position: absolute;
   right: 0; top: 56px; bottom: 0;
