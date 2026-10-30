@@ -35,6 +35,7 @@ async function send() {
     const res = await askQuestion(question)
     aiMsg.content = res.answer
     aiMsg.paths = res.paths || []
+    aiMsg.chains = res.chains || []
     aiMsg.sources = res.sources || []
     aiMsg.hitEntities = res.hitEntities || []
     // 前端侧耗时，和后端日志里记的那份基本一致，用于展示
@@ -74,6 +75,7 @@ async function loadHistory() {
         role: 'ai',
         content: r.answer,
         paths: r.paths || [],
+        chains: r.chains || [],
         sources: r.sources || [],
         hitEntities: r.hitEntities || [],
         hasEvidence: r.hasEvidence !== false,
@@ -169,15 +171,29 @@ function handleLogout() {
           </div>
 
           <div class="ev-toggle" @click="m.showPaths = !m.showPaths">
-            {{ m.showPaths ? '收起' : '展开' }}图谱依据（{{ m.paths.length }} 条关系）
+            {{ m.showPaths ? '收起' : '展开' }}图谱依据（{{
+              m.chains && m.chains.length
+                ? m.chains.length + ' 条链路 / ' + m.paths.length + ' 条关系'
+                : m.paths.length + ' 条关系'
+            }}）
           </div>
 
           <ul v-if="m.showPaths" class="paths">
-            <li v-for="(p, j) in m.paths" :key="j">
-              <b>{{ p.source }}</b>
-              <span class="rel">{{ p.relation }}</span>
-              <b>{{ p.target }}</b>
-            </li>
+            <template v-if="m.chains && m.chains.length">
+              <li v-for="(c, j) in m.chains" :key="'chain-' + j" class="chain">
+                <template v-for="(n, k) in c.nodes" :key="'n-' + k">
+                  <b>{{ n }}</b>
+                  <span v-if="k < c.edges.length" class="rel">→ {{ c.edges[k].relation }} →</span>
+                </template>
+              </li>
+            </template>
+            <template v-else>
+              <li v-for="(p, j) in m.paths" :key="j">
+                <b>{{ p.source }}</b>
+                <span class="rel">{{ p.relation }}</span>
+                <b>{{ p.target }}</b>
+              </li>
+            </template>
           </ul>
         </div>
       </div>
@@ -275,6 +291,8 @@ header button:disabled { opacity: .45; cursor: not-allowed; }
   display: inline-block; margin: 0 6px; padding: 1px 6px;
   background: #e8f0fe; color: #3b6ea5; border-radius: 3px; font-size: 11px;
 }
+.paths .chain { line-height: 1.9; }
+.paths .chain b { color: #333; }
 
 .composer {
   flex-shrink: 0; display: flex; gap: 10px; padding: 14px 20px;
