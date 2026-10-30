@@ -3,10 +3,12 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { getPrompt, savePrompt, resetPrompt } from '@/api/prompt'
+import { getMe, updateProfile, changePassword, deactivate } from '@/api/user'
 
 const router = useRouter()
 const authStore = useAuthStore()
 
+// ==================== 抽取 Prompt ====================
 const loading = ref(false)
 const saving = ref(false)
 const content = ref('')
@@ -85,19 +87,114 @@ function fillDefault() {
   flash('已填入默认值，点「保存」后生效。')
 }
 
+// ==================== 个人资料 ====================
+const profile = ref(null)
+const email = ref('')
+const avatarUrl = ref('')
+const profileSaving = ref(false)
+const profileMsg = ref('')
+
+async function loadProfile() {
+  try {
+    const data = await getMe()
+    profile.value = data
+    email.value = data.email || ''
+    avatarUrl.value = data.avatarUrl || ''
+  } catch (e) {
+    profileMsg.value = '资料加载失败：' + (e.message || '未知错误')
+  }
+}
+
+async function handleSaveProfile() {
+  profileSaving.value = true
+  profileMsg.value = ''
+  try {
+    const data = await updateProfile(email.value, avatarUrl.value)
+    profile.value = data
+    email.value = data.email || ''
+    avatarUrl.value = data.avatarUrl || ''
+    profileMsg.value = '已保存'
+  } catch (e) {
+    profileMsg.value = '保存失败：' + (e.message || '未知错误')
+  } finally {
+    profileSaving.value = false
+  }
+}
+
+// ==================== 修改密码 ====================
+const oldPassword = ref('')
+const newPassword = ref('')
+const confirmPassword = ref('')
+const pwdSaving = ref(false)
+const pwdMsg = ref('')
+const pwdOk = ref(false)
+
+const pwdReady = computed(() =>
+  oldPassword.value && newPassword.value.length >= 6 && newPassword.value === confirmPassword.value)
+
+async function handleChangePassword() {
+  if (newPassword.value !== confirmPassword.value) {
+    pwdOk.value = false
+    pwdMsg.value = '两次输入的新密码不一致'
+    return
+  }
+  pwdSaving.value = true
+  pwdMsg.value = ''
+  try {
+    await changePassword(oldPassword.value, newPassword.value)
+    oldPassword.value = ''
+    newPassword.value = ''
+    confirmPassword.value = ''
+    pwdOk.value = true
+    pwdMsg.value = '密码已修改，下次登录请用新密码'
+  } catch (e) {
+    pwdOk.value = false
+    pwdMsg.value = '修改失败：' + (e.message || '未知错误')
+  } finally {
+    pwdSaving.value = false
+  }
+}
+
+// ==================== 注销 ====================
+const deactivating = ref(false)
+
+async function handleDeactivate() {
+  const first = window.confirm('注销后账号无法登录，笔记、图谱与问答历史会保留在库中。确定注销吗？')
+  if (!first) return
+  const typed = window.prompt('请输入你的用户名以确认注销：')
+  if (typed !== authStore.username) {
+    window.alert('用户名不匹配，已取消')
+    return
+  }
+  deactivating.value = true
+  try {
+    await deactivate()
+    window.alert('账号已注销')
+    authStore.logout()
+    router.push('/login')
+  } catch (e) {
+    window.alert('注销失败：' + (e.message || '未知错误'))
+  } finally {
+    deactivating.value = false
+  }
+}
+
 function handleLogout() {
   authStore.logout()
   router.push('/login')
 }
 
-onMounted(load)
+onMounted(() => {
+  load()
+  loadProfile()
+})
 </script>
 
 <template>
   <div class="settings-page">
     <header>
       <h2>设置</h2>
-      <span class="sub">抽取 Prompt 可自定义</span>
+      <span class="sub">个人资料 / 抽取 Prompt</span>
       <span class="user">欢迎，{{ authStore.username }}</span>
       <button @click="router.push('/graph')">图谱</button>
       <button @click="router.push('/notes')">笔记</button>
@@ -106,9 +203,60 @@ onMounted(load)
       <button @click="handleLogout">退出</button>
     </header>
 
-    <p v-if="message" class="tip" :class="messageType">{{ message }}</p>
-    <p v-if="loading" class="tip">加载中...</p>
+    <!-- 个人资料 -->
+    <section class="card">
+      <div class="card-head">
+        <h3>个人资料</h3>
+        <span v-if="profile && profile.createdAt" class="meta">加入时间：{{ profile.createdAt }}</span>
+      </div>
+      <p v-if="profileMsg" class="tip" :class="profileMsg.startsWith('已') ? 'ok' : 'error'">{{ profileMsg }}</p>
 
+      <div class="form-row">
+        <label>用户名</label>
+        <input :value="profile ? profile.username : ''" disabled />
+        <span class="hint-inline">登录标识，不可修改</span>
+      </div>
+      <div class="form-row">
+        <label>邮箱</label>
+        <input v-model="email" placeholder="可选，用于展示" />
+      </div>
+      <div class="form-row">
+        <label>头像地址</label>
+        <input v-model="avatarUrl" placeholder="可选，http(s) 链接" />
+      </div>
+      <div class="form-actions">
+        <button class="primary" :disabled="profileSaving" @click="handleSaveProfile">
+          {{ profileSaving ? '保存中...' : '保存资料' }}
+        </button>
+      </div>
+    </section>
+
+    <!-- 修改密码 -->
+    <section class="card">
+      <div class="card-head"><h3>修改密码</h3></div>
+      <p v-if="pwdMsg" class="tip" :class="pwdOk ? 'ok' : 'error'">{{ pwdMsg }}</p>
+
+      <div class="form-row">
+        <label>原密码</label>
+        <input v-model="oldPassword" type="password" autocomplete="current-password" />
+      </div>
+      <div class="form-row">
+        <label>新密码</label>
+        <input v-model="newPassword" type="password" autocomplete="new-password" placeholder="6—32 个字符" />
+      </div>
+      <div class="form-row">
+        <label>确认新密码</label>
+        <input v-model="confirmPassword" type="password" autocomplete="new-password" />
+      </div>
+      <div class="form-actions">
+        <button class="primary" :disabled="!pwdReady || pwdSaving" @click="handleChangePassword">
+          {{ pwdSaving ? '提交中...' : '修改密码' }}
+        </button>
+        <span class="hint-inline">改完请记住新密码，本系统不支持找回</span>
+      </div>
+    </section>
+
+    <!-- 抽取 Prompt -->
     <section class="card">
       <div class="card-head">
         <h3>抽取 Prompt</h3>
@@ -124,6 +272,9 @@ onMounted(load)
         <b>输出必须是 <code>{"nodes": [...], "edges": [...]}</code> 这个 JSON 结构</b>，
         否则解析会失败（失败会自动重试 3 次，再不行降级为规则抽取）。
       </p>
+
+      <p v-if="message" class="tip" :class="messageType">{{ message }}</p>
+      <p v-if="loading" class="tip">加载中...</p>
 
       <textarea
         v-model="content"
@@ -149,6 +300,20 @@ onMounted(load)
         <pre>{{ defaultContent }}</pre>
       </details>
     </section>
+
+    <!-- 危险操作 -->
+    <section class="card danger-zone">
+      <div class="card-head"><h3>注销账号</h3></div>
+      <p class="hint">
+        注销是逻辑删除：账号无法再登录，但你的笔记、图谱与问答历史会保留在数据库中，方便误操作后人工恢复。
+        注销后当前页面的登录状态会在下一次请求时失效。
+      </p>
+      <div class="form-actions">
+        <button class="danger" :disabled="deactivating" @click="handleDeactivate">
+          {{ deactivating ? '处理中...' : '注销我的账号' }}
+        </button>
+      </div>
+    </section>
   </div>
 </template>
 
@@ -164,6 +329,8 @@ button {
 }
 button:hover:not(:disabled) { background: #f5f6f8; }
 button:disabled { opacity: .55; cursor: not-allowed; }
+button.primary { background: #1f6feb; border-color: #1f6feb; color: #fff; }
+button.primary:hover:not(:disabled) { background: #195ecb; }
 button.danger { color: #c0392b; border-color: #e6b3ad; }
 
 .tip { padding: 8px 12px; border-radius: 6px; font-size: 13px; background: #f2f4f7; color: #555; }
@@ -171,6 +338,7 @@ button.danger { color: #c0392b; border-color: #e6b3ad; }
 .tip.error { background: #fdeceb; color: #c0392b; }
 
 .card { border: 1px solid #e4e7ec; border-radius: 10px; padding: 16px; margin-top: 12px; }
+.danger-zone { border-color: #f0d2ce; }
 .card-head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
 .card-head h3 { font-size: 15px; margin: 0; }
 .badge { font-size: 12px; padding: 1px 8px; border-radius: 10px; background: #eef2f6; color: #5b6b7c; }
@@ -178,8 +346,18 @@ button.danger { color: #c0392b; border-color: #e6b3ad; }
 .hint { font-size: 12.5px; color: #667085; line-height: 1.7; margin: 6px 0 12px; }
 .hint code { background: #f4f6f8; padding: 1px 4px; border-radius: 4px; }
 
+.form-row { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+.form-row label { width: 84px; font-size: 13px; color: #475467; flex: none; }
+.form-row input {
+  flex: 1; padding: 7px 10px; border: 1px solid #d0d5dd; border-radius: 6px; font-size: 13px;
+}
+.form-row input:disabled { background: #f7f8fa; color: #98a2b3; }
+.form-row input:focus { outline: none; border-color: #7fa7d8; box-shadow: 0 0 0 3px rgba(127,167,216,.15); }
+.hint-inline { font-size: 12px; color: #98a2b3; }
+.form-actions { display: flex; align-items: center; gap: 10px; margin-top: 6px; }
+
 .editor {
-  width: 100%; min-height: 340px; resize: vertical;
+  width: 100%; min-height: 320px; resize: vertical;
   font-family: ui-monospace, Consolas, monospace; font-size: 13px; line-height: 1.7;
   padding: 12px; border: 1px solid #d0d5dd; border-radius: 8px; box-sizing: border-box;
   white-space: pre-wrap;
