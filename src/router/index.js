@@ -4,6 +4,7 @@ import GraphView from '@/views/GraphView.vue'
 import ChatView from '@/views/ChatView.vue'
 import NotesView from '@/views/NotesView.vue'
 import DashboardView from '@/views/DashboardView.vue'
+import SettingsView from '@/views/SettingsView.vue'
 
 const routes = [
   { path: '/login', component: LoginView },
@@ -11,6 +12,7 @@ const routes = [
   { path: '/notes', component: NotesView, meta: { requiresAuth: true } },
   { path: '/chat',  component: ChatView,  meta: { requiresAuth: true } },
   { path: '/dashboard', component: DashboardView, meta: { requiresAuth: true } },
+  { path: '/settings', component: SettingsView, meta: { requiresAuth: true } },
   { path: '/', redirect: '/graph' }
 ]
 

@@ -174,6 +174,7 @@ function refresh() {
       <button @click="router.push('/graph')">图谱</button>
       <button @click="router.push('/notes')">笔记</button>
       <button @click="router.push('/chat')">问答</button>
+      <button @click="router.push('/settings')">设置</button>
       <button class="primary-btn" @click="refresh" :disabled="loading">刷新</button>
       <button @click="handleLogout">退出</button>
     </header>

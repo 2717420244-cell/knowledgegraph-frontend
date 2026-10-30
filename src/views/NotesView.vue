@@ -200,6 +200,7 @@ function handleLogout() {
       <button @click="router.push('/graph')">看图谱</button>
       <button @click="router.push('/chat')">问答</button>
       <button @click="router.push('/dashboard')">统计</button>
+      <button @click="router.push('/settings')">设置</button>
       <button @click="handleLogout">退出</button>
     </header>
 

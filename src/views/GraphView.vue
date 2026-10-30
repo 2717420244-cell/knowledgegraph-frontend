@@ -358,6 +358,7 @@ function handleLogout() {
       <button @click="router.push('/dashboard')">统计</button>
       <button class="primary-btn" @click="showCreateDialog = true">+ 新建并解析</button>
       <button @click="router.push('/notes')">笔记</button>
+      <button @click="router.push('/settings')">设置</button>
       <button @click="handleLogout">退出</button>
     </header>
     <p v-if="loading" class="tip">加载中...</p>
