@@ -125,7 +125,9 @@ async function parse(note) {
   parsingId.value = note.id
   try {
     const result = await parseNote(note.id)
-    alert(`解析完成！新增 ${result.nodeCount} 个实体，${result.edgeCount} 条关系。`)
+    // cached=true 表示 5 分钟内同一正文解析过，后端直接返回了上次结果、没调模型
+    const suffix = result.cached ? '（5 分钟内解析过，本次未重复调用模型）' : ''
+    alert(`解析完成！新增 ${result.nodeCount} 个实体，${result.edgeCount} 条关系。${suffix}`)
     await loadNotes()
   } catch (e) {
     alert('解析失败：' + (e.message || '未知错误'))
