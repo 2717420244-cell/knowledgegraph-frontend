@@ -6,3 +6,11 @@ import request from './request'
  */
 export const askQuestion = (question) =>
   request.post('/chat', { question })
+
+/** 最近的问答历史（一问一答，按时间正序） */
+export const getHistory = (limit = 10) =>
+  request.get('/chat/history', { params: { limit } })
+
+/** 清空自己的问答历史 */
+export const clearHistory = () =>
+  request.delete('/chat/history')

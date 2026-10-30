@@ -1,6 +1,6 @@
 <script setup>
-import { ref, nextTick } from 'vue'
-import { askQuestion } from '@/api/chat'
+import { ref, nextTick, onMounted } from 'vue'
+import { askQuestion, getHistory, clearHistory } from '@/api/chat'
 import { useAuthStore } from '@/stores/auth'
 import { useRouter } from 'vue-router'
 
@@ -11,6 +11,7 @@ const authStore = useAuthStore()
 const messages = ref([])
 const input = ref('')
 const sending = ref(false)
+const loadingHistory = ref(false)
 
 const listRef = ref(null)
 
@@ -30,11 +31,14 @@ async function send() {
   scrollToBottom()
 
   try {
+    const startedAt = Date.now()
     const res = await askQuestion(question)
     aiMsg.content = res.answer
     aiMsg.paths = res.paths || []
     aiMsg.sources = res.sources || []
     aiMsg.hitEntities = res.hitEntities || []
+    // 前端侧耗时，和后端日志里记的那份基本一致，用于展示
+    aiMsg.latencyMs = Date.now() - startedAt
     // 后端明确说「图谱里没有依据」时，隐藏溯源区，避免答案看着有出处
     aiMsg.hasEvidence = res.hasEvidence !== false
   } catch (e) {
@@ -55,6 +59,50 @@ function scrollToBottom() {
   })
 }
 
+/**
+ * 把历史记录回填成消息数组。
+ * 字段刻意和实时回答对齐（paths/sources/hitEntities/hasEvidence），
+ * 这样模板里一套渲染逻辑就能同时吃「刚问的」和「历史里的」。
+ */
+async function loadHistory() {
+  loadingHistory.value = true
+  try {
+    const rows = await getHistory(10)
+    messages.value = rows.flatMap((r) => [
+      { role: 'user', content: r.question },
+      {
+        role: 'ai',
+        content: r.answer,
+        paths: r.paths || [],
+        sources: r.sources || [],
+        hitEntities: r.hitEntities || [],
+        hasEvidence: r.hasEvidence !== false,
+        latencyMs: r.latencyMs,
+        showPaths: false,
+      },
+    ])
+    scrollToBottom()
+  } catch (e) {
+    // 历史加载失败不该挡住提问，降级成空列表
+    console.warn('问答历史加载失败：', e.message)
+  } finally {
+    loadingHistory.value = false
+  }
+}
+
+async function handleClear() {
+  if (messages.value.length === 0 || sending.value) return
+  if (!window.confirm('清空后问答历史不可恢复，确定吗？')) return
+  try {
+    await clearHistory()
+    messages.value = []
+  } catch (e) {
+    window.alert('清空失败：' + (e.message || '未知错误'))
+  }
+}
+
+onMounted(loadHistory)
+
 function handleLogout() {
   authStore.logout()
   router.push('/login')
@@ -70,19 +118,26 @@ function handleLogout() {
       <button @click="router.push('/graph')">图谱</button>
       <button @click="router.push('/notes')">笔记</button>
       <button @click="router.push('/dashboard')">统计</button>
+      <button :disabled="messages.length === 0 || sending" @click="handleClear">清空对话</button>
       <button @click="handleLogout">退出</button>
     </header>
 
     <div class="msg-list" ref="listRef">
-      <p v-if="messages.length === 0" class="empty">
+      <p v-if="messages.length === 0 && !loadingHistory" class="empty">
         试着问：「RAG 和微调有什么区别？」
       </p>
+      <p v-if="loadingHistory" class="empty">正在加载历史对话...</p>
 
       <div v-for="(m, i) in messages" :key="i" class="msg" :class="m.role">
         <div class="bubble">{{ m.content }}</div>
 
         <div v-if="m.loading" class="typing">
           <span></span><span></span><span></span> 正在检索图谱并生成答案...
+        </div>
+
+        <!-- 查询日志里的耗时，历史记录里也有 -->
+        <div v-if="m.role === 'ai' && !m.loading && m.latencyMs" class="latency">
+          耗时 {{ (m.latencyMs / 1000).toFixed(1) }}s
         </div>
 
         <!-- 只有 AI 消息且拿到数据才展示依据 -->
@@ -156,6 +211,7 @@ header button {
   padding: 6px 14px; background: transparent; color: #fff;
   border: 1px solid rgba(255,255,255,.5); border-radius: 4px; cursor: pointer;
 }
+header button:disabled { opacity: .45; cursor: not-allowed; }
 
 .msg-list {
   flex: 1; overflow-y: auto; padding: 24px;
@@ -176,6 +232,7 @@ header button {
 .msg.ai .bubble { background: #fff; border: 1px solid #e5e5e5; }
 
 .typing { font-size: 12px; color: #999; margin-top: 6px; }
+.latency { font-size: 11px; color: #aaa; margin-top: 4px; }
 .typing span {
   display: inline-block; width: 5px; height: 5px; margin-right: 2px;
   background: #bbb; border-radius: 50%; animation: blink 1.2s infinite;
